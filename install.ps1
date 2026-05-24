@@ -2,7 +2,7 @@
 # Usage: irm https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/install.ps1 | iex
 
 param(
-    [string]$Version = "1.4.10",
+    [string]$Version = "1.5.0",
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\dao-cli"
 )
 
