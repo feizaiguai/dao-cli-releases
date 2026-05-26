@@ -2,7 +2,7 @@
 # Usage: irm https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/install.ps1 | iex
 
 param(
-    [string]$Version = "1.7.0",
+    [string]$Version = "1.7.1",
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\dao-cli"
 )
 
@@ -10,8 +10,8 @@ $ErrorActionPreference = "Stop"
 
 $Arch = if ([System.Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
 $Platform = "windows"
-$AssetBase = "https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/staging-v$Version"
-$BackupAssetBase = "https://raw.gitmirror.com/feizaiguai/dao-cli-releases/main/staging-v$Version"
+$AssetBase = "https://github.com/feizaiguai/dao-cli-releases/releases/download/v$Version"
+$BackupAssetBase = "https://mirror.ghproxy.com/https://github.com/feizaiguai/dao-cli-releases/releases/download/v$Version"
 
 Write-Host "DAO-CLI v$Version installer" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan

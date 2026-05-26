@@ -12,12 +12,6 @@
 irm https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/install.ps1 | iex
 ```
 
-### 通过 npm（全平台）
-
-```bash
-npm install -g @bigbao/dao-cli
-```
-
 ---
 
 ## 支持平台
@@ -25,10 +19,8 @@ npm install -g @bigbao/dao-cli
 | 平台 | 架构 | 二进制名称 |
 |------|------|-----------|
 | Windows | x64 | `dao-windows-x64.exe` + `dao-cli-windows-x64.exe` |
-| Linux | x64 | `dao-linux-x64` + `dao-cli-linux-x64` |
-| Linux | arm64 | `dao-linux-arm64` + `dao-cli-linux-arm64` |
-| macOS | x64 | `dao-macos-x64` + `dao-cli-macos-x64` |
-| macOS | Apple Silicon | `dao-macos-arm64` + `dao-cli-macos-arm64` |
+
+其他平台预编译包尚未发布到本仓库。
 
 ---
 
