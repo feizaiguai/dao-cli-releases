@@ -2,7 +2,7 @@
 # Usage: irm https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/install.ps1 | iex
 
 param(
-    [string]$Version = "1.6.16",
+    [string]$Version = "1.7.0",
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\dao-cli"
 )
 
@@ -35,8 +35,15 @@ try {
         Invoke-WebRequest -Uri $backupDaoUrl -OutFile $daoPath -UseBasicParsing
         Write-Host "  [OK] dao.exe (via backup mirror)" -ForegroundColor Green
     } catch {
-        Write-Host "  [ERROR] Download failed: $_" -ForegroundColor Red
-        exit 1
+        Write-Host "  [WARNING] Backup mirror failed, trying Gitee ultra-speed cloud..." -ForegroundColor Yellow
+        try {
+            $giteeDaoUrl = "https://gitee.com/feizaiguai/dao-cli-releases/raw/main/staging-v$Version/dao-$Platform-$Arch.exe"
+            Invoke-WebRequest -Uri $giteeDaoUrl -OutFile $daoPath -UseBasicParsing
+            Write-Host "  [OK] dao.exe (via Gitee cloud)" -ForegroundColor Green
+        } catch {
+            Write-Host "  [ERROR] Download failed: $_" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
@@ -51,8 +58,15 @@ try {
         Invoke-WebRequest -Uri $backupDaoCliUrl -OutFile $daoCliPath -UseBasicParsing
         Write-Host "  [OK] dao-cli.exe (via backup mirror)" -ForegroundColor Green
     } catch {
-        Write-Host "  [ERROR] Download failed: $_" -ForegroundColor Red
-        exit 1
+        Write-Host "  [WARNING] Backup mirror failed, trying Gitee ultra-speed cloud..." -ForegroundColor Yellow
+        try {
+            $giteeDaoCliUrl = "https://gitee.com/feizaiguai/dao-cli-releases/raw/main/staging-v$Version/dao-cli-$Platform-$Arch.exe"
+            Invoke-WebRequest -Uri $giteeDaoCliUrl -OutFile $daoCliPath -UseBasicParsing
+            Write-Host "  [OK] dao-cli.exe (via Gitee cloud)" -ForegroundColor Green
+        } catch {
+            Write-Host "  [ERROR] Download failed: $_" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
