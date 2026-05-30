@@ -2,7 +2,7 @@
 # Install command: irm https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main/install.ps1 | iex
 
 param(
-    [string]$Version = "1.8.11",
+    [string]$Version = "1.8.12",
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\dao-cli"
 )
 
