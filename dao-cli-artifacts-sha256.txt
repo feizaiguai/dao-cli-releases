@@ -1,2 +1,2 @@
-f774bf3d6abab730e5edba8da1e8c634e407eafd11bacb5825bff462f3772f03  dao-windows-x64.exe
-04390770cd2268e1daddb68d56d6100f505da274ed9743242bd6d712d065bbc0  dao-cli-windows-x64.exe
+ec4526977a5cd78078aae1a4437cf337c03eb28755c3e64028a58ab941bf7da0  dao-windows-x64.exe
+f5b6ce06125cd2a0a6cbf33ba5238c1810f1de0fd6db3f3e6da71f530a804731  dao-cli-windows-x64.exe
