@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $rawBase = "https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main"
 $defaultInstallDir = Join-Path $env:LOCALAPPDATA "Programs\dao-cli"
@@ -135,9 +135,13 @@ try {
     if (-not $version) {
         throw "LATEST_VERSION.txt is empty."
     }
+    if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+        throw "LATEST_VERSION.txt must contain a three-part numeric version."
+    }
+    $releaseBase = "https://github.com/feizaiguai/dao-cli-releases/releases/download/v$version"
 
     $checksumFile = Join-Path $tempDir "dao-cli-artifacts-sha256.txt"
-    Invoke-DaoWebRequest -Uri "$rawBase/dao-cli-artifacts-sha256.txt" -OutFile $checksumFile
+    Invoke-DaoWebRequest -Uri "$releaseBase/dao-cli-artifacts-sha256.txt" -OutFile $checksumFile
     $checksums = Read-DaoChecksums -Path $checksumFile
 
     $assets = @(
@@ -148,7 +152,7 @@ try {
     foreach ($asset in $assets) {
         $downloadPath = Join-Path $tempDir $asset.Remote
         $installPath = Join-Path $installDir $asset.Local
-        Invoke-DaoWebRequest -Uri "$rawBase/$($asset.Remote)" -OutFile $downloadPath
+        Invoke-DaoWebRequest -Uri "$releaseBase/$($asset.Remote)" -OutFile $downloadPath
 
         if (-not $checksums.ContainsKey($asset.Remote)) {
             throw "Missing checksum for $($asset.Remote)."
@@ -191,3 +195,4 @@ try {
 } finally {
     Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
+
