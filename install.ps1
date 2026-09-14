@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 $rawBase = "https://raw.githubusercontent.com/feizaiguai/dao-cli-releases/main"
 $defaultInstallDir = Join-Path $env:LOCALAPPDATA "Programs\dao-cli"
@@ -195,4 +195,3 @@ try {
 } finally {
     Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-
