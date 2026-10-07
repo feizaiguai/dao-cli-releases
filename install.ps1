@@ -6,6 +6,32 @@ $legacyInstallDir = Join-Path $env:LOCALAPPDATA "DAO-CLI\bin"
 $installDir = if ($env:DAO_CLI_INSTALL_DIR) { $env:DAO_CLI_INSTALL_DIR } else { $defaultInstallDir }
 $installDir = [System.IO.Path]::GetFullPath($installDir)
 $skipPathUpdate = $env:DAO_CLI_SKIP_PATH_UPDATE -match "^(1|true|yes)$"
+$skipHostConnect = $env:DAO_CLI_SKIP_HOST_CONNECT -match "^(1|true|yes)$"
+
+function Connect-DaoHosts {
+    param([Parameter(Mandatory = $true)][string]$DaoPath)
+
+    if ($skipHostConnect) {
+        Write-Host "DAO host registration skipped because DAO_CLI_SKIP_HOST_CONNECT is set."
+        return
+    }
+    try {
+        & $DaoPath hosts auto-setup | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'host auto-setup command failed' }
+        $status = & $DaoPath hosts status codex
+        if ($LASTEXITCODE -ne 0) { throw 'host status command failed' }
+    } catch {
+        Write-Warning "DAO host auto-setup failed; binaries are installed. Run dao hosts status codex for details."
+        return
+    }
+    if ($status -eq '已注册（待握手验证）') {
+        Write-Host 'DAO host registered: codex. Reload that host to use it.'
+    } elseif ($status -eq '等待后装 Codex 自动接入') {
+        Write-Host 'DAO will connect Codex on the next normal DAO launch after Codex is installed.'
+    } elseif ($status -eq '已关闭 Codex 自动接入') {
+        Write-Host 'DAO host auto registration remains disabled by user preference.'
+    }
+}
 
 function Invoke-DaoWebRequest {
     param(
@@ -125,9 +151,97 @@ function Read-DaoChecksums {
     return $checksums
 }
 
+function Restore-DaoInstallTransaction {
+    param([Parameter(Mandatory = $true)][string]$InstallDir)
+
+    $journalPath = Join-Path $InstallDir ".dao-install-transaction.json"
+    if (-not (Test-Path -LiteralPath $journalPath -PathType Leaf)) { return }
+    $journal = Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json -ErrorAction Stop
+    if ($journal.schema -ne 'dao.install.pair.v1' -or $journal.backup_name -notmatch '^\.dao-install-backup-[a-f0-9]{32}$') {
+        throw "Invalid DAO installation recovery journal: $journalPath"
+    }
+    $backupDir = Join-Path $InstallDir $journal.backup_name
+    $names = @('dao.exe', 'dao-cli.exe', 'dao-cli-artifacts-sha256.txt', 'VERSION')
+    foreach ($name in $names) {
+        $old = $journal.old.$name
+        if ($null -eq $old -or $null -eq $old.present) {
+            throw "Incomplete DAO installation recovery journal: $name"
+        }
+        if ($old.present) {
+            $backup = Join-Path $backupDir $name
+            if (-not (Test-Path -LiteralPath $backup -PathType Leaf)) {
+                throw "Missing DAO installation recovery file: $backup"
+            }
+            $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $backup).Hash
+            if ($actual -ne $old.sha256) {
+                throw "DAO installation recovery checksum mismatch: $name"
+            }
+        }
+    }
+    foreach ($name in $names) {
+        $target = Join-Path $InstallDir $name
+        if ($journal.old.$name.present) {
+            if ((Test-Path -LiteralPath $target -PathType Leaf) -and
+                (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash -eq $journal.old.$name.sha256) {
+                continue
+            }
+            Copy-Item -LiteralPath (Join-Path $backupDir $name) -Destination $target -Force
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash -ne $journal.old.$name.sha256) {
+                throw "DAO installation recovery verification failed: $name"
+            }
+        } elseif (Test-Path -LiteralPath $target -PathType Leaf) {
+            Remove-Item -LiteralPath $target -Force
+        }
+    }
+    Remove-Item -LiteralPath $journalPath -Force
+    Remove-Item -LiteralPath $backupDir -Recurse -Force
+}
+
+function Start-DaoInstallTransaction {
+    param([Parameter(Mandatory = $true)][string]$InstallDir)
+
+    $backupName = ".dao-install-backup-$([Guid]::NewGuid().ToString('N'))"
+    $backupDir = Join-Path $InstallDir $backupName
+    New-Item -ItemType Directory -Path $backupDir -ErrorAction Stop | Out-Null
+    $old = @{}
+    foreach ($name in @('dao.exe', 'dao-cli.exe', 'dao-cli-artifacts-sha256.txt', 'VERSION')) {
+        $target = Join-Path $InstallDir $name
+        $present = Test-Path -LiteralPath $target -PathType Leaf
+        $entry = @{ present = $present; sha256 = $null }
+        if ($present) {
+            $entry.sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash
+            $backup = Join-Path $backupDir $name
+            Copy-Item -LiteralPath $target -Destination $backup -ErrorAction Stop
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $backup).Hash -ne $entry.sha256) {
+                throw "DAO installation backup verification failed: $name"
+            }
+        }
+        $old[$name] = $entry
+    }
+    $journalPath = Join-Path $InstallDir ".dao-install-transaction.json"
+    $journalTemp = Join-Path $InstallDir ".dao-install-transaction.tmp"
+    @{ schema = 'dao.install.pair.v1'; backup_name = $backupName; old = $old } |
+        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $journalTemp -Encoding UTF8
+    Move-Item -LiteralPath $journalTemp -Destination $journalPath -ErrorAction Stop
+    return $backupDir
+}
+
 New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dao-cli-install-" + [System.Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+try {
+    $installLock = [IO.File]::Open(
+        (Join-Path $installDir '.dao-install.lock'),
+        [IO.FileMode]::OpenOrCreate,
+        [IO.FileAccess]::ReadWrite,
+        [IO.FileShare]::None
+    )
+} catch {
+    throw "Another DAO installation is already using $installDir : $_"
+}
+
+try {
+    Restore-DaoInstallTransaction -InstallDir $installDir
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("dao-cli-install-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 try {
     $versionResponse = Invoke-DaoWebRequest -Uri "$rawBase/LATEST_VERSION.txt"
@@ -151,7 +265,6 @@ try {
 
     foreach ($asset in $assets) {
         $downloadPath = Join-Path $tempDir $asset.Remote
-        $installPath = Join-Path $installDir $asset.Local
         Invoke-DaoWebRequest -Uri "$releaseBase/$($asset.Remote)" -OutFile $downloadPath
 
         if (-not $checksums.ContainsKey($asset.Remote)) {
@@ -163,20 +276,55 @@ try {
             throw "Checksum mismatch for $($asset.Remote). Expected $($checksums[$asset.Remote]), got $actualHash."
         }
 
-        Copy-Item -LiteralPath $downloadPath -Destination $installPath -Force
     }
 
-    Copy-Item -LiteralPath $checksumFile -Destination (Join-Path $installDir "dao-cli-artifacts-sha256.txt") -Force
-    Set-Content -LiteralPath (Join-Path $installDir "VERSION") -Value $version -Encoding ASCII
+    $backupDir = Start-DaoInstallTransaction -InstallDir $installDir
+    try {
+        foreach ($asset in $assets) {
+            $downloadPath = Join-Path $tempDir $asset.Remote
+            $installPath = Join-Path $installDir $asset.Local
+            Copy-Item -LiteralPath $downloadPath -Destination $installPath -Force
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $installPath).Hash.ToLowerInvariant() -ne $checksums[$asset.Remote]) {
+                throw "DAO installation verification failed: $($asset.Local)"
+            }
+        }
+        Copy-Item -LiteralPath $checksumFile -Destination (Join-Path $installDir "dao-cli-artifacts-sha256.txt") -Force
+        Set-Content -LiteralPath (Join-Path $installDir "VERSION") -Value $version -Encoding ASCII
+        $daoVersion = & (Join-Path $installDir "dao.exe") --version
+        $daoExitCode = $LASTEXITCODE
+        $cliVersion = & (Join-Path $installDir "dao-cli.exe") --version
+        $cliExitCode = $LASTEXITCODE
+        if ($daoExitCode -ne 0 -or $cliExitCode -ne 0 -or
+            $daoVersion -notmatch ("^dao " + [regex]::Escape($version) + "(?:\s|$)") -or
+            $cliVersion -notmatch ("^dao-cli " + [regex]::Escape($version) + "(?:\s|$)")) {
+            throw "DAO installation version readback failed: $version"
+        }
+        Remove-Item -LiteralPath (Join-Path $installDir ".dao-install-transaction.json") -Force
+        try {
+            Remove-Item -LiteralPath $backupDir -Recurse -Force
+        } catch {
+            Write-Warning "Installed pair verified, but backup cleanup failed: $backupDir"
+        }
+    } catch {
+        $failure = $_
+        try {
+            Restore-DaoInstallTransaction -InstallDir $installDir
+        } catch {
+            throw "DAO installation failed and automatic recovery failed; recovery journal retained at $installDir : $failure ; $_"
+        }
+        throw $failure
+    }
 
     if (-not $skipPathUpdate) {
         Add-DaoPath -Path $installDir
     }
 
+    # auto-setup creates a preference only when one is absent, and respects
+    # existing registrations and explicit revocation on both install and upgrade.
+    Connect-DaoHosts -DaoPath (Join-Path $installDir 'dao.exe')
+
     Remove-DaoUpdaterBackups -Path $installDir
 
-    $daoVersion = & (Join-Path $installDir "dao.exe") --version
-    $cliVersion = & (Join-Path $installDir "dao-cli.exe") --version
     $conflicts = Find-DaoPathConflicts -ExpectedPath $installDir
 
     Write-Host "DAO-CLI $version installed to $installDir"
@@ -193,5 +341,12 @@ try {
         Write-Warning "Remove those old installations to avoid launching the wrong version."
     }
 } finally {
-    Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\', '/') + '\'
+    if ($tempDir.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        [IO.Path]::GetFileName($tempDir) -match '^dao-cli-install-[a-f0-9]{32}$') {
+        Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+} finally {
+    $installLock.Dispose()
 }
